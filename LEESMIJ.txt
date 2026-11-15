@@ -43,12 +43,43 @@ Of vanaf de opdrachtregel, met opties:
                               verwacht antwoord op 641; contact AAN / motor aan)
    probe.bat --roffe2        (roffe's VERVOLG: config 3 met elk van zijn 4 verschillen
                               1 voor 1 en samen - zie hieronder; contact AAN)
+   probe.bat --sniff         (PASSIEVE opname: logt ALLE I-bus-frames naar een CSV,
+                              stuurt zelf NIETS - om een fysieke Tech2 mee te lezen;
+                              met --hs ook de P-bus. Stop met Ctrl+C. Zie hieronder.)
 
 Alleen als je bewust iets naar de bus wilt sturen (nog steeds GEEN
 security access / Add/Remove - alleen een GMLAN wake + TesterPresent
 zoals oamne's agent):
    probe.bat --active
    probe.bat --active --hv-wake   (ook de high-voltage wekpuls 0x100)
+
+
+SNIFFER - PASSIEF MEELEZEN (--sniff)
+------------------------------------
+Om te vergelijken wat de FYSIEKE Tech2 doet (bv. bij een SPA Remove+Add) met
+wat Tech3Win doet. De probe opent de I-bus ALLEEN om te luisteren en stuurt
+zelf niets - de Tech2 is de enige tester, de Nano leest passief mee.
+
+Aansluiting: de Tech2 en de Nano moeten allebei op de I-bus (pin 1). Makkelijkst
+met een OBD-Y-splitter: Tech2 in de ene tak, Nano in de andere.
+
+Draaien:
+   probe.bat --sniff          (alleen I-bus)
+   probe.bat --sniff --hs     (ook de P-bus meelezen)
+1. Acculader aan, contact aan.
+2. Start eerst  probe.bat --sniff , dan pas de Tech2-actie.
+3. Doe op de Tech2 de volledige Remove + Add.
+4. Klaar? Druk Ctrl+C - de opname wordt afgesloten.
+
+De opname komt in een bestand  sniff_JAAR-MAAND-DAG_UURMINSEC.csv  naast
+probe.bat (kolommen: tijd, bus, id, module, lengte, databytes). De
+interessante frames (3B schrijven, 7F weigering, 27 security access) komen ook
+live op het scherm. Stuur dat CSV-bestand naar Claude - CSV is tekst en
+overleeft de upload prima.
+
+LET OP: in zo'n opname staat je VIN (de Tech2 leest die uit). Houd de
+sniff_*.csv dus UIT een openbare plek; voor de GitHub-repo staat hij in
+.gitignore.
 
 
 ROFFE2 - DE VERVOLGTEST (--roffe2)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# (versie 14-11-2026: --roffe2 toegevoegd)
+# (versie 15-11-2026: --sniff toegevoegd; 14-11: --roffe2)
 """
 J2534 Nano Probe  -  VCX Nano / Tech3Win haalbaarheidstest
 ===========================================================
@@ -797,6 +797,126 @@ def roffe_test2(j, seconds):
     print("  Daar vroeg roffe expliciet om (naast de tech3win-log).")
 
 
+def sniff_bus(j, do_hs):
+    """PASSIEVE opname. Opent SW-CAN (I-bus) alleen-luisteren en logt ELK frame
+    met een tijdstempel naar een CSV naast dit script. Stuurt NIETS naar de bus
+    (geen wek, geen TesterPresent, geen verzoek) - veilig om naast een ander
+    apparaat (bv. een fysieke Tech2) mee te lezen. Met --hs ook HS-CAN (P-bus).
+    Stoppen met Ctrl+C; de CSV wordt netjes afgesloten.
+
+    De interessante frames (3B schrijven, 7F weigering, 27 security access) komen
+    ook live op het scherm; de rest gaat alleen naar de CSV (zodat het scherm de
+    opname niet vertraagt)."""
+    hr("SNIFFER (passief) - logt ALLE frames, STUURT NIETS. Stop met Ctrl+C")
+
+    csv_path = None
+    csv = None
+    try:
+        d = os.path.dirname(os.path.abspath(__file__))
+        csv_path = os.path.join(d, time.strftime("sniff_%Y-%m-%d_%H%M%S.csv"))
+        csv = open(csv_path, "w", encoding="utf-8", buffering=1)
+        csv.write("time_s,bus,id_hex,module,dlc,data_hex\n")
+        print(f"  Opname-CSV: {csv_path}")
+    except Exception as e:
+        print(f"  (kon geen CSV openen: {e}; alleen het .log-bestand wordt gevuld)")
+        csv = None
+
+    chans = []
+    sw = j.connect(PROTO_SW_CAN_PS, 33333, flags=CAN_ID_BOTH)
+    if sw is None:
+        print("  SW-CAN ging niet open; stop.")
+        if csv:
+            csv.close()
+        return
+    j.set_pin1(sw)
+    j.set_config(sw, LOOPBACK, 0, "SET_CONFIG LOOPBACK=0")
+    j.pass_all_filter(sw, PROTO_SW_CAN_PS)
+    chans.append((sw, "I"))
+    print("  SW-CAN (I-bus, pin 1, 33333) open - ALLEEN LUISTEREN")
+    hs = None
+    if do_hs:
+        hs = _open_bus(j, PROTO_CAN, 500000)
+        if hs is not None:
+            chans.append((hs, "P"))
+            print("  HS-CAN (P-bus, 500k) open - ALLEEN LUISTEREN")
+
+    print()
+    print("  >>> START NU je Tech2-actie (Remove/Add). Alles wordt opgenomen.  <<<")
+    print("  >>> Klaar? Ctrl+C om te stoppen en de CSV af te sluiten.          <<<")
+    print()
+
+    t0 = time.time()
+    total = 0
+    ids = {}
+    last_status = 0.0
+    BATCH = 64
+    try:
+        while True:
+            got_any = False
+            for ch, tag in chans:
+                arr = (PASSTHRU_MSG * BATCH)()
+                num = c_ulong(BATCH)
+                try:
+                    j.PassThruReadMsgs(ch, arr, byref(num), 50)
+                except Exception:
+                    num.value = 0
+                for i in range(num.value):
+                    m = arr[i]
+                    if m.DataSize < 4:
+                        continue
+                    got_any = True
+                    cid = struct.unpack(">I", bytes(m.Data[0:4]))[0] & 0x1FFFFFFF
+                    data = bytes(m.Data[4:m.DataSize])
+                    t = time.time() - t0
+                    total += 1
+                    ids[cid] = ids.get(cid, 0) + 1
+                    mod = KNOWN_IDS.get(cid, "")
+                    hexd = data.hex(" ")
+                    if csv:
+                        csv.write(f"{t:.3f},{tag},{cid:03X},{mod},{len(data)},{hexd}\n")
+                    # alleen de interessante frames op het scherm
+                    if len(data) >= 2 and data[1] in (0x3B, 0x7F, 0x27):
+                        svc = {0x3B: "WRITE 3B", 0x7F: "NEG 7F",
+                               0x27: "SEC 27"}[data[1]]
+                        extra = f" [{mod}]" if mod else ""
+                        print(f"  t={t:8.3f} [{tag}] {cid:03X}{extra}  {hexd}   <-- {svc}")
+            now = time.time()
+            if now - last_status >= 2.0:
+                print(f"  --- opgenomen: {total} frames, {len(ids)} id's, "
+                      f"{now - t0:.0f}s (Ctrl+C = stop) ---")
+                last_status = now
+            if not got_any:
+                time.sleep(0.005)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for ch, _ in chans:
+            try:
+                j.disconnect(ch)
+            except Exception:
+                pass
+        if csv:
+            try:
+                csv.close()
+            except Exception:
+                pass
+
+    print()
+    hr("SNIFFER GESTOPT")
+    print(f"  Totaal {total} frames, {len(ids)} unieke id's, "
+          f"{time.time() - t0:.0f}s opgenomen.")
+    if ids:
+        top = sorted(ids.items(), key=lambda kv: -kv[1])[:10]
+        print("  Meest gezien:", ", ".join(
+            f"{i:03X}{('(' + KNOWN_IDS[i] + ')') if i in KNOWN_IDS else ''}x{n}"
+            for i, n in top))
+    if csv_path:
+        print(f"\n  >>> STUUR DIT CSV-BESTAND naar Claude: {csv_path}")
+        print("      (CSV is tekst en overleeft de chat-upload prima.)")
+    print("  Tip: zoek in de CSV naar '3b ba' (de BCM bus-config-schrijfactie)")
+    print("       en naar '7f 3b' (een weigering) om de BCM-stap terug te vinden.")
+
+
 def active_wake_and_testerpresent(j, ch, seconds, do_hv_wake):
     """ALLEEN met --active. Stuurt de GMLAN wake/TesterPresent zoals oamne's
     agent. GEEN security access, GEEN Add/Remove, GEEN module-schrijfacties."""
@@ -863,6 +983,10 @@ def main():
     ap.add_argument("--roffe2", action="store_true",
                     help="roffe's vervolg: config 3 met elk van zijn 4 verschillen "
                          "(SW-eerst, HV-wake, MS-CAN+TP, 241 01 20) los en samen")
+    ap.add_argument("--sniff", action="store_true",
+                    help="PASSIEVE opname: logt alle I-bus-frames (met --hs ook "
+                         "P-bus) naar een CSV, stuurt zelf NIETS; om een fysieke "
+                         "Tech2-sessie mee te lezen. Stop met Ctrl+C")
     args = ap.parse_args()
 
     _start_logging()  # vanaf hier gaat alles ook naar een logbestand
@@ -958,6 +1082,12 @@ def main():
     # 4d) roffe's vervolg-test: config 3 + zijn 4 verschillen (aparte modus)
     if args.roffe2:
         roffe_test2(j, max(args.seconds, 5))
+        j.close()
+        return _pause()
+
+    # 4e) passieve sniffer (aparte modus): logt alles naar CSV, stuurt niets
+    if args.sniff:
+        sniff_bus(j, args.hs)
         j.close()
         return _pause()
 

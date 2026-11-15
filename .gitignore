@@ -1,5 +1,6 @@
-# Probe-logs kunnen voertuiggegevens (VIN) bevatten - nooit committen
+# Probe-logs en sniffer-opnames kunnen voertuiggegevens (VIN) bevatten - nooit committen
 probe_*.log
+sniff_*.csv
 *.log
 
 # Python

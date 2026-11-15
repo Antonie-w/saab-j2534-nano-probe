@@ -37,6 +37,7 @@ probe.bat --seconds 15    listen longer
 probe.bat --dual          does the adapter hold SW-CAN and HS-CAN open at once?
 probe.bat --roffe         3-step test: send 241 02 1A 90 to the CIM, expect 641
 probe.bat --roffe2        follow-up: config 3 + each of 4 emulator quirks, one by one
+probe.bat --sniff [--hs]  passive capture: log every I-bus (and P-bus) frame to CSV
 probe.bat --active [--hv-wake]   send GMLAN wake + TesterPresent, then listen
 probe.bat --dll "C:\path\to\other_j2534.dll"   use a specific adapter
 ```
@@ -45,6 +46,13 @@ The `--roffe` mode sends a **VIN read** (`1A 90`) to the CIM on 0x241 and watche
 for the module's reply on 0x641, in three channel/flag/filter configurations.
 It is the most useful mode for proving whether the *adapter* can do the request/
 response the emulator needs. (VIN read only — no security access, no writes.)
+
+The `--sniff` mode is a strictly passive recorder: it opens the I-bus (and, with
+`--hs`, the P-bus) listen-only, transmits nothing, and logs every frame with a
+timestamp to a `sniff_*.csv` next to the script, echoing the interesting frames
+(`3B` writes, `7F` negative responses, `27` security access) to the screen. It's
+meant for reading along while another tester — e.g. a physical Tech2 — does its
+thing, to compare behaviour. The CSV can hold a VIN, so it is git-ignored.
 
 The `--roffe2` mode takes the passing config 3 and re-runs it with each of four
 things the emulator does differently added one at a time — SW-CAN opened before
