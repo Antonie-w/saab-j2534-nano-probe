@@ -1,0 +1,106 @@
+J2534 NANO PROBE
+================
+Test of de J2534-driver van je VCX Nano kan wat Tech3Win vraagt:
+een single-wire CAN-kanaal (SW_CAN_PS) op OBD-pin 1, 33.333 bit/s
+(de I-bus van de 9-3 NG), plus eventueel HS-CAN.
+
+Dit is een CONTROLE-tool, geen diagnosetool. Hij is READ-ONLY in de
+standaardstand: hij leest de registry, opent de driver, probeert de
+kanalen te openen en LUISTERT alleen mee. Hij stuurt zelf NIETS naar
+de auto, tenzij je expliciet --active meegeeft.
+
+Niets in deze tool raakt security access, Add/Remove of het 0x27-/
+seed-key-algoritme.
+
+
+WAT JE NODIG HEBT
+-----------------
+1. Windows met VX Manager geinstalleerd (de VXDIAG J2534-driver).
+   Dit is de laptop waarop de Nano normaal werkt.
+2. 32-bit Python 3.  BELANGRIJK: J2534-driver-DLL's zijn 32-bit, dus
+   64-bit Python kan ze niet laden. Je gebruikte 32-bit Python ook al
+   voor de LED Enabler.
+   - Controleren: start Python en kijk of er "(32-bit)" bij staat, of
+     draai de probe; die zegt het meteen.
+   - 32-bit Python halen: python.org -> Downloads -> "Windows installer
+     (32-bit)".
+3. De VCX Nano aangesloten (voor de kanaal- en luistertest).
+   Voor verkeer op de I-bus: contact aan (stand II / ON).
+   Houd een acculader aangesloten.
+
+
+STARTEN
+-------
+Dubbelklik  probe.bat
+
+Of vanaf de opdrachtregel, met opties:
+   probe.bat                 (standaard: registry + SW_CAN_PS + 8 s luisteren)
+   probe.bat --hs            (ook HS-CAN 500k testen)
+   probe.bat --seconds 15    (langer luisteren)
+   probe.bat --dll "C:\pad\naar\vxdiag_j2534.dll"   (DLL zelf kiezen)
+   probe.bat --dual          (test of de Nano SW-CAN en HS-CAN echt tegelijk kan)
+   probe.bat --roffe         (roffe's 3-staps-test: stuurt 241 02 1A 90 naar de CIM,
+                              verwacht antwoord op 641; contact AAN / motor aan)
+   probe.bat --roffe2        (roffe's VERVOLG: config 3 met elk van zijn 4 verschillen
+                              1 voor 1 en samen - zie hieronder; contact AAN)
+
+Alleen als je bewust iets naar de bus wilt sturen (nog steeds GEEN
+security access / Add/Remove - alleen een GMLAN wake + TesterPresent
+zoals oamne's agent):
+   probe.bat --active
+   probe.bat --active --hv-wake   (ook de high-voltage wekpuls 0x100)
+
+
+ROFFE2 - DE VERVOLGTEST (--roffe2)
+----------------------------------
+roffe's config 3 slaagde al. Hij noemt nu 4 dingen die Tech3Win nog net
+anders doet, en wil weten welke de CIM doet dichtklappen. --roffe2 draait
+config 3 telkens opnieuw, met elk verschil er los bij, en tot slot alle vier
+samen (de volledige Tech3Win-replica):
+   1. SW-CAN EERST openen, dan HS-CAN (wij deden HS eerst)
+   2. de HV-wake (0x100, geen data, TxFlags 0x400) vooraf
+   3. een derde kanaal: MS-CAN (CAN_PS 95238, pins 0x030B) + TesterPresent
+      op alle drie de bussen
+   4. verzoek 241 01 20 (op 8 bytes), de CIM hoort 641 01 60 te antwoorden
+De log zegt per variant of er een 641 kwam, en welke toevoeging het breekt.
+
+BELANGRIJK voor roffe: pak NA deze run ook het bestand
+   C:\ProgramData\VCX\Logs\VCX\VCX.python.exe.log
+mee (dat is VXDIAG's eigen log van deze probe-run). Daar vroeg roffe
+expliciet om, zodat hij 'm naast de tech3win-log kan leggen.
+
+
+LOGBESTAND
+----------
+De probe schrijft alle uitvoer ook automatisch weg naar een bestand naast
+probe.bat, met de naam  probe_JAAR-MAAND-DAG_UURMINSEC.log . Je hoeft dus
+niets te kopieren/plakken: stuur gewoon dat .log-bestand naar Claude. Het
+pad staat ook boven- en onderaan in het scherm.
+
+
+WAT DE PROBE JE VERTELT
+-----------------------
+STAP 1  Welke J2534-drivers staan geregistreerd, en meldt de registry
+        voor de Nano "SW_CAN_PS"? (Dit werkt al zonder de Nano erin.)
+STAP 2  Opent de driver, versie en accuspanning.
+STAP 3  Gaat het single-wire kanaal (pin 1, 33.333) echt open, en komt
+        er I-bus-verkeer binnen? -> dit is de kernvraag.
+STAP 4  (met --hs) idem voor HS-CAN.
+SAMENVATTING  kort eindoordeel.
+
+Stuur de VOLLEDIGE uitvoer naar Claude. Juist de ruwe foutcodes en
+-teksten zijn waardevol: als een kanaal niet opent, zien we daaraan of
+het aan een constante (protocol-id/pin) of aan de driver ligt, en
+kunnen we de tool bijstellen.
+
+
+ZEKERHEID VAN DE INSTELLINGEN
+-----------------------------
+- SW_CAN_PS = 0x8008, J1962_PINS = 0x0100 (pin 1), 33.333 bit/s:
+  overgenomen uit je eigen, werkende LED Enabler en oamne's
+  saab-j2534-sniffer. [bevestigd in dat verband]
+- Of de VXDIAG-DLL exact deze protocol-id gebruikt, weten we pas zeker
+  na deze test. Daarom print de probe bij elke stap de ruwe retourcode
+  en fouttekst, zodat we het desnoods kunnen aanpassen.
+
+Gemaakt met Claude, november 2026, voor Antonie's Saab 9-3 NG-project.

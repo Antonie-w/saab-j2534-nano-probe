@@ -1,0 +1,7 @@
+# Probe-logs kunnen voertuiggegevens (VIN) bevatten - nooit committen
+probe_*.log
+*.log
+
+# Python
+__pycache__/
+*.pyc
