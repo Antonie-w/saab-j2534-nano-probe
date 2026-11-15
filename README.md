@@ -68,11 +68,22 @@ TesterPresent, no security access, no writes.
 Against a VXDIAG VCX Nano on a Saab 9-3 NG, all three steps of the `--roffe`
 test returned a valid CIM response on 0x641 (the VIN), including with HS-CAN open
 at the same time and with the emulator's exact connect flags and filters. So the
-adapter transmits on pin 1, holds both buses open, and the CIM answers — the
-remaining "I-Bus Missing" behaviour sits on the emulator side, not the adapter.
+adapter transmits on pin 1 and holds **two** buses open at once.
+
+The `--roffe2` run then isolated the actual cause of "I-Bus Missing": re-running
+that passing config with each emulator quirk added one at a time, the CIM's 0x641
+kept coming **until a third channel (MS-CAN, `CAN_PS` at 95238, `J1962_PINS`
+0x030B) was opened** — at which point single-wire reception went silent (0
+frames). The MS-CAN channel opens without error, but once it is open this adapter
+stops receiving on SW-CAN. A silent "can't hold three buses open at once" limit.
+
+Resolution: with the emulator's **"Disable MS-CAN"** option enabled (so only
+SW-CAN + HS-CAN are open), the VCX Nano works end to end on the 9-3 NG — read,
+security access, and a full module Add/Remove on a real car. No Saab module lives
+on MS-CAN, so nothing is lost by disabling it.
 
 (For comparison: a ChipSoft J2534 Mid/Pro states in its own driver dialog that it
-*cannot* use SW-CAN on pin 1 and CAN on pins 3–11 at the same time; the Nano can.)
+*cannot* use SW-CAN on pin 1 and CAN on pins 3–11 at the same time either.)
 
 ## Safety
 
